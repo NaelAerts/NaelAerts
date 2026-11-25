@@ -61,9 +61,15 @@ samples, no library audio. Cues are placed against the picture's own beats:
 
 Beds: night wind, a sub drone (a tone under the drama, not a melody), pools lapping, and
 rain fading in from 8.2 s. The master adds a synthetic hall convolution, a 34 Hz high-pass,
-and gentle bus compression; the mix peaks at −1.0 dBFS with −21 dBFS RMS, so it stays dynamic.
+and gentle bus compression; the mix peaks at −1.0 dBFS, so it stays dynamic.
 
-The strike at 6.02 s is the loudest 100 ms window in the whole mix, by design.
+**Rain in the final scene** is carried by three layers — the main bed, a denser second bed,
+and a close "rain on stone" band — so it reads as heavier weather rather than louder hiss.
+Individual drop transients are soft-limited inside `rain_bed`: those 2 ms clicks otherwise
+take the master's peak and duck the strike without adding any perceived loudness.
+
+Loudness arc (RMS): scene 1 .047 → scene 2 .049 → scene 3 .102 → scene 4 .141. Scene 4 is the
+loudest *sustained* section, while the strike at 6.02 s remains the loudest *peak* in the file.
 
 ## Files
 

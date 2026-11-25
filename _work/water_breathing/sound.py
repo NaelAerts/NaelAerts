@@ -74,7 +74,12 @@ def rain_bed(d, density=0.55, seed=3):
         dd = int(r.uniform(0.004, 0.016) * SR)
         f = r.uniform(1800, 7000)
         ticks[i:i + dd] += np.sin(2 * np.pi * f * T(dd)) * np.exp(-T(dd) * 320) * r.uniform(.2, 1.0)
-    return hiss + ticks * 0.5
+    out = hiss + ticks * 0.5
+    # tame the individual drop transients: brief clicks otherwise steal the mix's headroom
+    # without adding any perceived loudness, which would duck the strike on the master
+    p = float(np.percentile(np.abs(out), 99.5)) + 1e-9
+    k = p * 1.7
+    return np.tanh(out / k) * k
 
 def droplet(f0=2600, f1=900, d=0.16, bright=1.0):
     """a single water drop: resonant ping falling in pitch"""
@@ -231,9 +236,16 @@ def build():
     m.put_st(0, water_rush(DUR, 300, 2600, .5, 0.0) * pg,
              water_rush(DUR, 320, 2800, .5, 2.4) * pg, 0.046)
 
-    # rain takes over from the dissolving water
-    rg = curve([(0, 0), (8.2, 0), (9.0, .45), (9.8, .95), (10.6, 1.0), (12, 1.0)])
+    # rain takes over from the dissolving water, and comes up hard for the final scene
+    rg = curve([(0, 0), (8.2, 0), (9.0, .70), (9.8, 1.70), (10.6, 2.00), (12, 2.05)])
     m.put_st(0, rain_bed(DUR, .55, 1) * rg, rain_bed(DUR, .55, 9) * rg, 0.100)
+    # a denser second layer only under the last scene, so it reads as heavier rain
+    # rather than just a louder hiss
+    r2 = curve([(0, 0), (8.6, 0), (9.4, .55), (10.4, 1.0), (12, 1.0)])
+    m.put_st(0, rain_bed(DUR, 1.05, 21) * r2, rain_bed(DUR, 1.05, 33) * r2, 0.060)
+    # rain on the stone close by
+    r3 = curve([(0, 0), (9.0, 0), (9.8, .7), (10.6, 1.0), (12, 1.0)])
+    m.put_st(0, bp(nz(N), 900, 5200) * r3, bp(nz(N), 950, 5400) * r3, 0.022)
 
     # ---- scene 1: introduction -------------------------------------------
     m.put(0.18, taiko(2.0, 96, 40), 0.185, pan=0.0)                 # the opening hit
