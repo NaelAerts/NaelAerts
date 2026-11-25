@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 _work/**/frames/
+_work/voxel/node_modules/
+_work/voxel/site/jsm/
+_work/voxel/site/three.module.js
+_work/voxel/*.wav

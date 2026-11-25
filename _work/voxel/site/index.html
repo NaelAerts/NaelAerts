@@ -1,0 +1,178 @@
+<!doctype html><html><head><meta charset="utf-8"><title>voxel</title>
+<style>
+ @font-face{font-family:Poppins;src:url(/Poppins-Bold.ttf)}
+ html,body{margin:0;background:#000;overflow:hidden}
+ canvas{display:block}
+ #hud{position:fixed;inset:0;pointer-events:none;font-family:Poppins,system-ui,sans-serif;color:#fff}
+ #scale{position:absolute;left:64px;bottom:58px;letter-spacing:.02em;
+        text-shadow:0 2px 18px rgba(0,0,0,.65),0 0 2px rgba(0,0,0,.5)}
+ #exp{font-size:66px;line-height:1}
+ #exp sup{font-size:34px;vertical-align:super;margin-left:2px}
+ #lab{font-size:21px;opacity:.88;margin-top:8px;letter-spacing:.16em;text-transform:uppercase}
+ #ruler{position:absolute;right:62px;top:50%;transform:translateY(-50%);width:96px;height:58%}
+ #ruler div{position:absolute;right:0;height:2px;background:#fff;opacity:.35}
+ #ruler b{position:absolute;right:0;font-size:13px;opacity:.5;font-weight:400;transform:translateY(-8px);padding-right:30px}
+ #mark{position:absolute;right:0;width:54px!important;height:3px!important;background:#fff!important;opacity:1!important;
+       box-shadow:0 0 14px rgba(255,255,255,.9)}
+ #title{position:absolute;left:64px;top:52px;font-size:19px;letter-spacing:.3em;opacity:.0;text-transform:uppercase}
+</style></head>
+<body>
+<div id="hud">
+  <div id="scale"><div id="exp">10<sup>21</sup> m</div><div id="lab">voie lactée</div></div>
+  <div id="ruler"></div>
+  <div id="title">powers of ten · voxel</div>
+</div>
+<script type="importmap">{"imports":{"three":"/three.module.js","three/addons/":"/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { seed } from './lib.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import * as L from './levels.js';
+
+const W = +(new URLSearchParams(location.search).get('w') || 1920);
+const H = Math.round(W * 9 / 16);
+const FADE = 0.36;   // centred ON the boundary: the new blocks swirl in while the old ones scatter                       // crossfade length, centred just before each boundary
+
+// name, start, duration, exponent, label
+const LV = [
+  ['galaxy',  0.0, 3.4,  21, 'voie lactée'],
+  ['solar',   3.4, 3.3,  12, 'système solaire'],
+  ['earth',   6.7, 3.3,   7, 'terre'],
+  ['coast',  10.0, 3.3,   4, 'littoral'],
+  ['tree',   13.3, 3.3,   1, 'chêne sur la falaise'],
+  ['hopper', 16.6, 3.3,  -1, 'sauterelle'],
+  ['cells',  19.9, 3.3,  -4, 'cellules de la feuille'],
+  ['dna',    23.2, 3.3,  -8, 'adn'],
+  ['atom',   26.5, 3.5, -10, 'atome de carbone'],
+];
+export const DUR = 30.0;
+const LEAD = 0.30;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setSize(W, H); renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.appendChild(renderer.domElement);
+
+const rt = o => new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, samples: 4 });
+const rtA = rt(), rtB = rt();
+
+// --- mix pass: crossfade + a touch of zoom blur on the outgoing level
+const mixMat = new THREE.ShaderMaterial({
+  uniforms: { tA: { value: null }, tB: { value: null }, mixF: { value: 0 }, zb: { value: 0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
+  fragmentShader: `
+   uniform sampler2D tA, tB; uniform float mixF, zb; varying vec2 vUv;
+   vec4 zoomTap(sampler2D s, vec2 uv, float k){
+     vec2 d = (uv - .5) * k; vec4 c = vec4(0.);
+     for (int i = 0; i < 5; i++) c += texture2D(s, uv - d * float(i) * .25);
+     return c / 5.;
+   }
+   void main(){
+     vec4 a = zb > .001 ? zoomTap(tA, vUv, zb * .055) : texture2D(tA, vUv);
+     vec4 b = mixF > .001 ? texture2D(tB, vUv) : vec4(0.);
+     gl_FragColor = mix(a, b, mixF);
+   }`,
+});
+const mixScene = new THREE.Scene();
+const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mixMat); quad.frustumCulled = false;
+mixScene.add(quad);
+const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+const composer = new EffectComposer(renderer);
+composer.setSize(W, H);
+composer.addPass(new RenderPass(mixScene, orthoCam));
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), .5, .8, .8);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+const grade = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, t: { value: 0 }, ca: { value: 1.0 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+  fragmentShader: `
+   uniform sampler2D tDiffuse; uniform float t, ca; varying vec2 vUv;
+   float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+   void main(){
+     vec2 d = (vUv - .5);
+     float k = .0016 * ca * dot(d, d) * 4.;
+     vec4 c; c.r = texture2D(tDiffuse, vUv + d * k).r; c.g = texture2D(tDiffuse, vUv).g;
+     c.b = texture2D(tDiffuse, vUv - d * k).b; c.a = 1.;
+     c.rgb = mix(vec3(dot(c.rgb, vec3(.299,.587,.114))), c.rgb, 1.12);   // a little more bite
+     c.rgb *= 1.0 - dot(d, d) * .55;                                      // vignette
+     c.rgb += (h(vUv * 1024. + t) - .5) * .022;                           // grain
+     gl_FragColor = c;
+   }`,
+});
+composer.addPass(grade);
+
+// --- levels, built once and cached (seeded so parallel workers match)
+const cache = new Map();
+function level(i) {
+  if (!cache.has(i)) { seed(1000 + i * 131); cache.set(i, L[LV[i][0]](LEAD, LV[i][2])); }
+  return cache.get(i);
+}
+function drawTo(target, i, t) {
+  const lv = level(i);
+  const c = lv.update(t);
+  renderer.setRenderTarget(target);
+  renderer.setClearColor(0x000000, 1); renderer.clear();
+  renderer.render(lv.sc, c);
+  renderer.setRenderTarget(null);
+  return lv;
+}
+
+// --- HUD
+const ruler = document.getElementById('ruler');
+{
+  let html = '';
+  for (let e = 24; e >= -12; e -= 3) {
+    const y = ((24 - e) / 36 * 100).toFixed(2);
+    html += `<div style="top:${y}%;width:${e % 6 === 0 ? 40 : 22}px"></div>` + (e % 6 === 0 ? `<b style="top:${y}%">10<sup>${e}</sup></b>` : '');
+  }
+  html += '<div id="mark" style="top:0%"></div>';
+  ruler.innerHTML = html;
+}
+const expEl = document.getElementById('exp'), labEl = document.getElementById('lab'), markEl = document.getElementById('mark');
+function hud(expVal, label, fade) {
+  const e = Math.round(expVal);
+  expEl.innerHTML = `10<sup>${e}</sup> m`;
+  labEl.textContent = label;
+  labEl.style.opacity = (fade > .1 && fade < .9) ? .25 : .88;
+  markEl.style.top = ((24 - expVal) / 36 * 100).toFixed(2) + '%';
+}
+
+window.renderAt = (T) => {
+  T = Math.max(0, Math.min(DUR - 1e-4, T));
+  let i = 0; while (i < LV.length - 1 && T >= LV[i + 1][1]) i++;
+  const nextStart = (i < LV.length - 1) ? LV[i + 1][1] : Infinity;
+  const f0 = nextStart - FADE * .5, f1 = nextStart + FADE * .5;
+  const fade = (T > f0) ? Math.min(1, Math.max(0, (T - f0) / (f1 - f0))) : 0;
+  const sfade = fade * fade * (3 - 2 * fade);
+
+  const a = drawTo(rtA, i, T - LV[i][1]);
+  let b = null;
+  if (fade > 0) b = drawTo(rtB, i + 1, T - LV[i + 1][1]);
+
+  mixMat.uniforms.tA.value = rtA.texture;
+  mixMat.uniforms.tB.value = b ? rtB.texture : rtA.texture;
+  mixMat.uniforms.mixF.value = b ? sfade : 0;
+  mixMat.uniforms.zb.value = sfade;
+
+  const lerp = (x, y, t) => x + (y - x) * t;
+  const bl = b ? a.bloom.map((v, k) => lerp(v, b.bloom[k], sfade)) : a.bloom;
+  bloom.strength = bl[0]; bloom.radius = bl[1]; bloom.threshold = bl[2];
+  renderer.toneMappingExposure = b ? lerp(a.exposure, b.exposure, sfade) : a.exposure;
+  grade.uniforms.t.value = T * 37.;
+  grade.uniforms.ca.value = 1 + sfade * 2.4;
+
+  const e0 = LV[i][3], e1 = (i < LV.length - 1) ? LV[i + 1][3] : e0;
+  hud(lerp(e0, e1, sfade), sfade > .5 ? LV[i + 1][4] : LV[i][4], sfade);
+  composer.render();
+};
+
+window.renderAt(0);
+window.__ready = true;
+</script></body></html>
