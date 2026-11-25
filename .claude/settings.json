@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "extraKnownMarketplaces": {
+    "claude-voiceover": {
+      "source": {
+        "source": "github",
+        "repo": "okets/claude-voiceover"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "voiceover@claude-voiceover": true
+  }
+}
