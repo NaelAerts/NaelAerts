@@ -196,7 +196,7 @@ def camera(name, loc, look, lens=40.0):
 
 
 def sky_and_sun(sun_energy=4.6, sky_strength=0.28, elevation=38, rotation=205,
-                sun_euler=(52, 0, 38), fill=None):
+                sun_euler=(52, 0, 38), fill=None, flat=None):
     w = bpy.data.worlds.new("W_Sky")
     bpy.context.scene.world = w
     w.use_nodes = True
@@ -215,7 +215,11 @@ def sky_and_sun(sun_energy=4.6, sky_strength=0.28, elevation=38, rotation=205,
             setattr(sky, attr, val)
         except Exception:
             pass
-    nt.links.new(sky.outputs[0], bg.inputs[0])
+    if flat is None:
+        nt.links.new(sky.outputs[0], bg.inputs[0])
+    else:
+        # a flat sky keeps the stylised look and stops the horizon blowing out to white
+        bg.inputs[0].default_value = (flat[0], flat[1], flat[2], 1.0)
     bg.inputs[1].default_value = sky_strength
 
     sd = bpy.data.lights.new("L_Sun", "SUN")
