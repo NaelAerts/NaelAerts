@@ -3,7 +3,8 @@
 A 12-second cinematic 2D anime fight animation, rendered entirely in code
 (no footage, no AI image generation, no stock assets). 1920x1080, 24 fps, H.264 MP4.
 
-**Output:** `water_breathing_fifth_form.mp4` (12.000 s, 288 frames, 12 MB)
+**Output:** `water_breathing_fifth_form.mp4` (12.000 s, 288 frames, H.264 + AAC 48 kHz stereo, 13 MB)
+**Audio stem:** `sound/water_breathing_audio.wav` — the full mix on its own, for rebalancing
 
 ## Character
 
@@ -37,12 +38,40 @@ rather than from a painted-on smear:
 - The camera is multiplane: each layer takes a parallax depth, and the final "orbit" keeps him
   centred while the world sweeps past.
 
+## Sound design
+
+Every cue is **synthesised from scratch** in `sound.py` (noise + oscillators + filters) — no
+samples, no library audio. Cues are placed against the picture's own beats:
+
+| Time | Cue |
+|------|-----|
+| 0.18 s | Deep taiko hit opening the film |
+| 0.5–2.4 s | Haori snapping in the wind; night air and wind bed |
+| 1.95 s | Low swell as he opens his eyes |
+| 3.00 s | Whoosh on the cut to the eyes |
+| 3.6–4.9 s | Water gathering: upward shimmer and drop pings |
+| 4.46 s | Nichirin steel rings (inharmonic partials) as the blade lifts |
+| 5.28 s | Rising wind-up whoosh, cloth snap |
+| **6.02 s** | **The strike** — water slash panned hard right→left, taiko, splash |
+| 6.50 / 7.20 s | The two follow-throughs, panned back across |
+| 5.6–9.4 s | The ring of water turning around him |
+| 8.1–9.3 s | Shimmer falling, water coming apart into drops |
+| 9.64 s | The chiburi flick: sharp whoosh, bright ring, droplet spatter |
+| 10.35 s | Closing low hit; rain carries to the end |
+
+Beds: night wind, a sub drone (a tone under the drama, not a melody), pools lapping, and
+rain fading in from 8.2 s. The master adds a synthetic hall convolution, a 34 Hz high-pass,
+and gentle bus compression; the mix peaks at −1.0 dBFS with −21 dBFS RMS, so it stays dynamic.
+
+The strike at 6.02 s is the loudest 100 ms window in the whole mix, by design.
+
 ## Files
 
 - `slayer_char.py` — the character: hair, face, haori/hakama, katana, IK limbs
 - `slayer_env.py` — night environment: sky, moon, ridges, bamboo, rock plateau, pools, rain-lit mist
 - `slayer_water.py` — water FX: layered sumi-e ribbons with curling crests, droplets, spray, ring arcs, rain
 - `scenes.py` — choreography, camera, the four shots, grade
+- `sound.py` — the synthesised sound design and the mix
 
 ## Rebuild
 
@@ -53,4 +82,12 @@ ffmpeg -y -framerate 24 -i out/frames/f%05d.jpg -c:v libx264 -preset slow -b:v 8
   -maxrate 10M -bufsize 16M -vf hqdn3d=1.5:1:3:3 -pix_fmt yuv420p -movflags +faststart \
   water_breathing_fifth_form.mp4
 ```
-Requires `skia-python`, `opencv-python-headless`, `numpy` and system `libegl1`.
+Then the sound, and mux it in without re-encoding the picture:
+
+```bash
+python3 sound.py
+ffmpeg -y -i water_breathing_fifth_form.mp4 -i sound/water_breathing_audio.wav \
+  -map 0:v -map 1:a -c:v copy -c:a aac -b:a 256k -movflags +faststart -shortest out.mp4
+```
+
+Requires `skia-python`, `opencv-python-headless`, `numpy`, `scipy` and system `libegl1`.
